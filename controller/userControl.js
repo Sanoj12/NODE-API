@@ -10,7 +10,8 @@ const { accessRefreshToken } = require('../config/refreshToken');
 const jwt = require('jsonwebtoken');
 const sendEmail = require('./emailcontroller');
 const crypto = require('crypto');
-const productModel = require('../models/productModel');
+
+const Coupon=require('../models/couponModel')
 
 //create User
 const createUser = asyncHandler(async (req, res) => {
@@ -236,48 +237,64 @@ const getWishList=asyncHandler(async(req,res)=>{
 })
 
 
-const userCart=asyncHandler(async(req,res)=>{
-    const {cart} =req.body;
-        const { _id }=req.user;
-        vaildateMongoDbId(_id);
-    try{
-        let products=[]
-        const user=await User.findById(_id);
-        //if check cart is already exist
+const userCart = asyncHandler(async (req, res) => {
+    const { cart } = req.body;
+    const { _id } = req.user;
+    validateMongoDbId(_id);
+    try {
+        let products = [];
+        const user = await User.findById(_id);
 
-        const alreadyExistCart=await Cart.findOne({ orderby:user._id});
-        if(alreadyExistCart){
-            alreadyExistCart.remove()
+        // Check if cart already exists for the user and remove it
+        const alreadyExistCart = await Cart.findOneAndDelete({ orderBy: user._id });
+
+        if (!cart || cart.length === 0) {
+            return res.status(400).json({ message: "Cart is empty" });
         }
-       for(let i=0; i<cart.length;i++){
-         let obj={}
-         obj.product=cart[i]._id;
-         obj.count=cart[i].count;
-         obj.color=cart[i].color;
-         let getPrice=await Product.findById(cart[i]._id).select("price").exec();
-         obj.price=getPrice.price;
-         products.push(obj);
-       }
-       
-        
-       let cartTotal=0;
-       for(let i=0;i< products.length;i++){
-        cartTotal=cartTotal + products[i].price * products[i].count;
 
-       }
-       console.log(products,cartTotal);
+        for (let i = 0; i < cart.length; i++) {
+            let obj = {};
+            obj.product = cart[i]._id;
+            obj.count = cart[i].count;
+            obj.color = cart[i].color;
+            let getPrice = await Product.findById(cart[i]._id).select("price").exec();
 
-       let newCart=await new Cart({
-           products,
-           cartTotal,
-           orderBy:user?._id,
-       }).save();
-      res.json(newCart)
-    }catch(err){
-        throw new Error(err)
+            // If product doesn't exist, log a warning and continue
+            if (!getPrice) {
+                console.warn(`Product with _id ${cart[i]._id} not found.`);
+                continue;
+            }
+
+            obj.price = getPrice.price;
+            products.push(obj);
+        }
+
+        console.log(products);
+
+        if (products.length === 0) {
+            return res.status(404).json({ message: "No products found in the cart" });
+        }
+
+        let cartTotal = 0;
+        for (let i = 0; i < products.length; i++) {
+            cartTotal += products[i].price * products[i].count;
+        }
+
+        console.log(products, cartTotal);
+
+        let newCart = await new Cart({
+            products,
+            cartTotal,
+            orderBy: user?._id,
+        }).save();
+
+        res.json(newCart);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Internal server error" });
     }
+});
 
-})
 
 const getUserCart=asyncHandler(async(req,res)=>{
     const {_id}=req.user;
@@ -286,7 +303,7 @@ const getUserCart=asyncHandler(async(req,res)=>{
       const cart=await Cart.findOne({orderBy:_id }).populate("products.product");
        res.json(cart)
     }catch(err){
-        throw new Error(err);
+         throw new Error(err);
     }
 })
 const cartRemove=asyncHandler(async(req,res)=>{
@@ -302,7 +319,56 @@ const cartRemove=asyncHandler(async(req,res)=>{
     }
 })
 
+const saveAddress=asyncHandler(async(req,res)=>{
+    const {_id}=req.user;
+    vaildateMongoDbId(_id);
+    try {
+        const updatedUser=await User.findByIdAndUpdate(
+            _id,
+            {
+                address:req?.body?.address,
+            },
+            {
+                new:true,
+            }
+        );
+            res.json(updatedUser)
+            console.log(updatedUser);
+        
+    } catch (error) {
+        throw new Error(error)
+    }
+})
 
+const createCoupon=asyncHandler(async(req,res)=>{
+    
+      try {
+        const newCoupon=await Coupon.create(req.body);
+        res.json(newCoupon);
+        console.log(newCoupon);
+      } catch (error) {
+         throw new Error(error)
+      }
+  })
+
+const ApplyCoupon=asyncHandler(async(req,res,next)=>{
+    const {coupon}=req.body;
+    const {_id}=req.user;
+    vaildateMongoDbId(_id);
+    const vaildCoupon=await Coupon.findOne({name:coupon})
+    console.log(vaildCoupon);
+    if(vaildCoupon === null){
+        throw new Error("Invaild coupon");
+    }
+    const user=await User.findOne({_id});
+    let {products,cartTotal} =await Cart.findOne({orderBy:user._id}).populate("products.product");
+     
+    let totalafterDiscount=(cartTotal * vaildCoupon.discount)/100;
+    cartTotal-=totalafterDiscount;
+    await Cart.findOneAndUpdate({orderBy:user._id},{totalafterDiscount},{new:true});
+    res.json(totalafterDiscount)
+
+c})
 module.exports = {
     createUser,
     loginUser,
@@ -311,11 +377,14 @@ module.exports = {
     getaUser,
     deleteaUser,
     updateaUser,
+    saveAddress,
     updatePassword,
     forgotPasswordToken,
     resetPassword,
     getWishList,
     userCart,
     getUserCart,
-    cartRemove
+    cartRemove,
+    createCoupon,
+    ApplyCoupon,
 }

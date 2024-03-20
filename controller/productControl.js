@@ -3,7 +3,7 @@ const Product = require("../models/productModel");
 const asyncHandler = require('express-async-handler');
 const slugify = require('slugify')
 const User = require('../models/userModel')
-
+const Coupon =require("../models/couponModel")
 const createProduct = asyncHandler(async (req, res) => {
   try {
     if (req.body.title) {
@@ -161,7 +161,16 @@ const addToWishlist=asyncHandler(async(req,res)=>{
     throw new error(error)
   } 
 })
+const createCoupon=asyncHandler(async(req,res)=>{
+  const {_id}=req.user;
+    try {
+      const newCoupon=await Coupon.create(req.body);
+      res.json(newCoupon);
+      console.log(newCoupon);
+    } catch (error) {
+       throw new Error(error)
+    }
+})
 
 
-
-module.exports = { createProduct, getaProduct, getAllProducts, updateaProducts, deleteProduct ,addToWishlist};
+module.exports = { createProduct, getaProduct, getAllProducts, updateaProducts, deleteProduct ,addToWishlist,createCoupon};
